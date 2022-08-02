@@ -1,10 +1,11 @@
+
 import os
 
 from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm
+from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
 from models import db, connect_db, User, Message
 
 CURR_USER_KEY = "curr_user"
@@ -18,7 +19,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
 
@@ -35,7 +36,7 @@ def add_user_to_g():
 
     if CURR_USER_KEY in session:
         g.user = User.query.get(session[CURR_USER_KEY])
-
+    
     else:
         g.user = None
 
@@ -64,7 +65,8 @@ def signup():
     If the there already is a user with that username: flash message
     and re-present form.
     """
-
+    if CURR_USER_KEY in session:
+        del session[CURR_USER_KEY]
     form = UserAddForm()
 
     if form.validate_on_submit():
@@ -113,6 +115,10 @@ def login():
 def logout():
     """Handle logout of user."""
 
+    do_logout()
+    flash("Successfull log out!",  'success')
+
+    return redirect("/login") 
     # IMPLEMENT THIS
 
 
@@ -211,6 +217,30 @@ def stop_following(follow_id):
 def profile():
     """Update profile for current user."""
 
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+    
+    user = g.user
+    form = UserEditForm(obj=g.user)
+
+    if form.validate_on_submit():
+        # check if password submitted on form is user's correct password
+        if User.authenticate(
+            user.username,
+            form.password.data):
+
+            user.username = form.username.data
+            user.email = form.email.data
+            user.image_url = form.image_url.data or "/static/images/default-pic.png"
+            user.header_image_url = form.header_image_url.data or "/static/images/warbler-hero.jpg"
+            user.bio = form.bio.data
+
+            db.session.commit()
+            return redirect(f'/users/{g.user.id}')
+        flash("Wrong password, please try again.", 'danger')
+    return render_template('users/edit.html', form=form, user_id=user.id)
+
     # IMPLEMENT THIS
 
 
@@ -292,6 +322,7 @@ def homepage():
     """
 
     if g.user:
+        following_ids = [f.id for f in g.user.following] + [g.user.id]
         messages = (Message
                     .query
                     .order_by(Message.timestamp.desc())
@@ -303,6 +334,11 @@ def homepage():
     else:
         return render_template('home-anon.html')
 
+@app.errorhandler(404)
+def page_not_foung(e):
+    """404 NOT FOUND page"""
+
+    return render_template('404.html'),  404
 
 ##############################################################################
 # Turn off all caching in Flask
