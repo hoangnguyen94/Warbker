@@ -28,8 +28,7 @@ class UserEditForm(FlaskForm):
     """ Form for updating users. """
     username = StringField(
         'Username',
-        validators=[DataRequired(),
-                    Length(max=30)])
+        validators=[DataRequired()])
     email = StringField(
         'E-mail',
         validators=[DataRequired(),
